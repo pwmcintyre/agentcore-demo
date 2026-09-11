@@ -1,6 +1,8 @@
 # AgentCore Project
 
-This project was created with the [AgentCore CLI](https://github.com/aws/agentcore-cli).
+This project started from the [AgentCore CLI](https://github.com/aws/agentcore-cli) template, then replaced its
+generated deployment path with custom CDK. `agentcore dev` remains the local development path; custom CDK owns remote
+deployment.
 
 ## Project Structure
 
@@ -43,11 +45,32 @@ and pass only prompt text to the agent.
 
 ### Deployment
 
-Deploy to AWS:
+Deploy the prerequisite network from repository root, then the application:
 
 ```bash
-agentcore deploy
+cd platform
+npx cdk deploy PlatformNetwork --profile sca-pwmcintyre --require-approval never
+
+cd ../CustomerSupport/agentcore/cdk
+npx cdk deploy CustomerSupportAgent -c stage=dev --profile sca-pwmcintyre --require-approval never
 ```
+
+Do not run `agentcore deploy`; it does not own these stacks.
+
+### Runtime registration and verification
+
+AgentCore CLI commands resolve deployed resources through `agentcore/.cli/deployed-state.json`. Custom CDK cannot
+populate that file itself. The official `agentcore import runtime` command was tested, but currently rejects the
+existing local runtime name and fails schema validation under an alias because it copies CloudFormation system tags.
+
+Run the bridge and complete end-to-end check from `CustomerSupport/` after each relevant deployment:
+
+```bash
+./scripts/verify-deployment.sh
+```
+
+The script registers CDK runtime outputs, invokes a synthetic marker, checks runtime readiness, then correlates matching
+CloudWatch logs and traces by session ID. It prints one `PASS` line and avoids printing conversation content.
 
 ## Commands
 
@@ -57,7 +80,7 @@ agentcore deploy
 | `agentcore add` | Add resources (agent, memory, credential, gateway, evaluator, policy) |
 | `agentcore remove` | Remove resources |
 | `agentcore dev` | Run agent locally with hot-reload |
-| `agentcore deploy` | Deploy to AWS via CDK |
+| `agentcore deploy` | Unused here; custom CDK owns deployment |
 | `agentcore status` | Show deployment status |
 | `agentcore invoke` | Invoke agent (local or deployed) |
 | `agentcore logs` | View agent logs |

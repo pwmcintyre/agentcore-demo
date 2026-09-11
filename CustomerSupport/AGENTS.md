@@ -25,6 +25,9 @@ Tags defined in `agentcore.json` flow through to deployed CloudFormation resourc
    deployed infrastructure.
 5. **Invocation Input:** Validate runtime payloads and require text prompts to be strings. If a Strands app accepts a
    caller-supplied message history, normalize the history tail with `strip_trailing_tool_use()` before invocation.
+6. **End-to-End Proof:** After deploying code or infrastructure that can affect runtime behavior, invoke the deployed
+   agent and verify runtime status, response, logs, and traces with `scripts/verify-deployment.sh`. A successful
+   CloudFormation deployment alone is not completion; record any unavailable observable as a blocker.
 
 ## Directory Structure
 
@@ -107,21 +110,33 @@ file maps to a JSON config file and includes validation constraints as comments 
 
 ## Deployment
 
-Deployments are orchestrated through the CLI:
+Remote deployment is owned by the custom CDK applications. Deploy the platform prerequisite first when it changes:
 
 ```bash
-agentcore deploy    # Synthesizes CDK and deploys to AWS
-agentcore status    # Shows deployment status
+cd ../platform
+npx cdk deploy PlatformNetwork --profile sca-pwmcintyre --require-approval never
 ```
-
-Alternatively, deploy directly via CDK:
 
 ```bash
 cd agentcore/cdk
-npm install
-npx cdk synth
-npx cdk deploy
+npx cdk deploy CustomerSupportAgent -c stage=dev --profile sca-pwmcintyre --require-approval never
 ```
+
+Use `agentcore dev` for local development and `agentcore invoke` for the deployed runtime registered in
+`agentcore/.cli/deployed-state.json`. Do not use `agentcore deploy`; it does not own this custom CDK lifecycle.
+
+### End-to-end verification
+
+After a deployment that can affect runtime behavior, run this from the project root:
+
+```bash
+./scripts/verify-deployment.sh
+```
+
+The script updates CLI deployed state from stable CDK outputs, invokes a synthetic marker, checks `READY`, and correlates
+logs and traces by session ID without printing conversation content. Confirm CloudWatch metrics separately when changing
+observability. Current `agentcore import runtime` behavior is incompatible with the existing local runtime entry; see
+`README.md` for details.
 
 ## Editing Schemas
 
