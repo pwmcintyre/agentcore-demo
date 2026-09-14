@@ -1,7 +1,7 @@
 # AgentCore CLI custom CDK boundary
 
-Research date: 2026-09-14. Local CLI: `@aws/agentcore` 0.28.1. Latest stable checked: 0.29.0. Upstream
-`main` checked at `1d94c5d`.
+Research date: 2026-09-14. Repository baseline: `@aws/agentcore` 0.28.1. Current global CLI and latest stable checked:
+0.29.0. Upstream `main` checked at `1d94c5d`.
 
 ## Verdict
 
@@ -53,6 +53,68 @@ Sources:
 No matching merged PR, release note, official guide, issue resolution, or discussion was found for bring-your-own CDK,
 custom stack naming, external deployment registration, or a pluggable output/state adapter. Search results instead lead
 to #672 and the still-open #2249.
+
+## CLI and L3 coupling
+
+There is no direct npm dependency from `@aws/agentcore` to `@aws/agentcore-cdk`: neither CLI 0.28.1 nor 0.29.0 lists
+the L3 package in its own dependencies. Instead, the CLI ships a CDK project template whose `package.json` gives the
+generated project a direct, exact-pinned dependency on the L3 package. The L3 README also documents standalone use
+without the CLI. This makes the relationship scaffolded and deployment-time, not package-loading or service-runtime
+coupling.
+
+| Boundary      | Coupling and status                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| npm graph     | `@aws/agentcore` and `@aws/agentcore-cdk` are separate packages. A generated `agentcore/cdk` app directly depends on the L3; the CLI does not. Both declare compatible CDK peers, but with different floors: CLI `aws-cdk-lib ^2.258.0`; L3 `^2.257.0`; both use `constructs ^10.0.0`. These are public package contracts.                                                                                                          |
+| Compile/synth | Customer CDK source imports L3 exports such as `AgentCoreApplication`, `AgentCoreMcp`, schemas, and `ConfigIO`. CLI invokes the app's build/synth flow. Type/API/schema incompatibility therefore fails compilation or synthesis before deployment. Public L3 exports and peer ranges are package contracts; compatibility with a particular CLI is not documented as one.                                                          |
+| Deploy/state  | L3-generated templates emit resource outputs. CLI then selects the expected stack and parses L3-shaped output logical IDs into deployed state. The installed alpha.50 code explicitly emits runtime `RuntimeId`, `RuntimeArn`, `RoleArn` and memory `Memory<Name>Id/Arn` outputs; CLI 0.28.1 parses their construct-scoped logical IDs. This output agreement is observed implementation, not a versioned public manifest contract. |
+| AWS runtime   | After synthesis/deployment, there is no live npm dependency or call path between CLI and L3. CloudFormation resources continue without either local package. L3 code can synthesize deployable helper assets such as custom-resource/build Lambdas, but those artifacts do not call the CLI package.                                                                                                                                |
+
+Exact observed pairings are:
+
+| CLI                                          | Vended L3 pin    | Repository state                           | npm publication evidence                                   |
+| -------------------------------------------- | ---------------- | ------------------------------------------ | ---------------------------------------------------------- |
+| 0.28.1                                       | `0.1.0-alpha.50` | Project manifest and lockfile pin alpha.50 | L3 published 2026-08-27 19:24 UTC; CLI published 19:48 UTC |
+| 0.29.0 (current stable and currently global) | `0.1.0-alpha.53` | Not yet adopted by project                 | L3 published 2026-09-11 20:18 UTC; CLI published 21:11 UTC |
+
+This is an observed tested pairing, not a documented compatibility matrix. No stable L3 version exists in the npm
+version list on the research date; its `latest` tag is `0.1.0-alpha.53`. CLI release tooling can repin its vended
+template to an explicit version or the L3 `latest` tag, but customer deploys do **not** query that tag. They use the
+template embedded in the installed CLI.
+
+Since 0.28.1, normal `agentcore deploy` synchronizes every dependency named in that embedded template. For the exact L3
+pin, the first deploy after upgrading CLI 0.28.1 to 0.29.0 rewrites project alpha.50 to alpha.53 and runs `npm install`,
+updating the lockfile incrementally. An older L3 pin is upgraded; a newer exact prerelease causes normal
+deploy to fail with `CliVersionTooOldError` instead of being downgraded. `--dry-run`/`--diff` only report changes,
+teardown converts skew or sync failure to warnings, non-semver overrides are skipped with a warning, and global
+`disableDependencyManagement` opts out. User-added dependencies remain untouched.
+
+Version drift can therefore fail in four places:
+
+- **Dependency preflight:** newer L3 with older managed CLI blocks normal deploy; registry/install/write failure blocks
+  normal deploy and restores the prior manifest.
+- **Compile/synth:** changed L3 exports, schema, CDK peer requirements, or generated-app assumptions can break TypeScript,
+  bundling, synthesis, or cloud-assembly reading. CLI issue fix #1465 is a concrete cloud-assembly schema precedent.
+- **Deploy/state reconstruction:** a mismatched L3 may synthesize successfully but emit logical IDs an older/newer CLI
+  parser does not recognize, causing resources to be omitted from local deployed state as described below.
+- **Opted-out/manual operation:** bypassing managed versions removes the preflight guard, not the inferred stack/output
+  contract. Compatibility becomes the project owner's responsibility.
+
+Sources:
+
+- [CLI 0.28.1 package manifest: no L3 dependency and CDK peers](https://github.com/aws/agentcore-cli/blob/v0.28.1/package.json)
+- [CLI 0.28.1 vended CDK manifest: exact alpha.50 pin](https://github.com/aws/agentcore-cli/blob/v0.28.1/src/assets/cdk/package.json)
+- [CLI 0.29.0 vended CDK manifest: exact alpha.53 pin](https://github.com/aws/agentcore-cli/blob/v0.29.0/src/assets/cdk/package.json)
+- [Managed dependency policy and skew detection](https://github.com/aws/agentcore-cli/blob/v0.28.1/src/lib/dependency-management/plan.ts),
+  [rewrite/install behavior](https://github.com/aws/agentcore-cli/blob/v0.28.1/src/lib/dependency-management/sync.ts), and
+  [deploy adapter/opt-out](https://github.com/aws/agentcore-cli/blob/v0.28.1/src/cli/operations/deploy/dependency-sync.ts)
+- [CLI release helper resolves the L3 `latest` tag when no version is supplied](https://github.com/aws/agentcore-cli/blob/v0.29.0/scripts/sync-vended-cdk.ts)
+- [PR #1777: rationale and tests for tested-version pinning](https://github.com/aws/agentcore-cli/pull/1777)
+- [L3 npm metadata and README: package dependencies, peers, exports, and standalone use](https://www.npmjs.com/package/@aws/agentcore-cdk)
+- Local installed L3 evidence: `CustomerSupport/agentcore/cdk/node_modules/@aws/agentcore-cdk/package.json`,
+  `dist/cdk/constructs/l3/AgentEnvironment.js:121-145`, and
+  `dist/cdk/constructs/l3/AgentCoreApplication.js:399-432`
+- Local pins: `CustomerSupport/agentcore/cdk/package.json:22-25` and
+  `CustomerSupport/agentcore/cdk/package-lock.json:393-413`
 
 ## Inferred 0.28.1 contract
 
@@ -253,6 +315,10 @@ enterprise stacks owned by another pipeline.
 
 ## Unresolved questions
 
+- AWS publishes no CLI-to-L3 compatibility matrix or support window. It is unknown whether every vended pair is tested
+  end-to-end or what compatibility, if any, is promised outside that exact pair.
+- The L3 source repository remains inaccessible without authentication. Alpha.50 installed code was inspectable, but
+  alpha.53 internals could not be independently compared beyond npm metadata, its published README, and CLI references.
 - Will #2249 merge into the released CLI line, and what compatibility/versioning promise will its extension point carry?
 - Does the eventual extension API permit multiple application stacks or only extra resources in one deterministic stack?
 - Which current runtime, memory, IAM, policy, and security-group resource types are eligible for CloudFormation stack
@@ -264,9 +330,15 @@ enterprise stacks owned by another pipeline.
 
 ## Checks performed
 
-- Confirmed installed executable and package version: `agentcore --version` => `0.28.1`, package `@aws/agentcore`.
+- Confirmed current global executable and package at
+  `/Users/peter/.nvm/versions/node/v22.23.2/lib/node_modules/@aws/agentcore`: `agentcore --version` => `0.29.0`.
+- Confirmed repository baseline from its pinned L3 manifest/lockfile and CLI 0.28.1 vended template: both use
+  `@aws/agentcore-cdk` 0.1.0-alpha.50. The repository does not directly pin the CLI npm package.
+- Queried npm package manifests, version lists, dist-tags, peer/dependency graphs, and publication timestamps for CLI
+  0.28.1/0.29.0 and L3 alpha.50/alpha.53.
 - Read local custom CDK, target config, synthesized templates, and deployed-state registration script.
-- Inspected tagged 0.28.1 deploy, CDK asset, output parser, stack discovery, dependency sync, and import source.
+- Inspected tagged 0.28.1 deploy, CDK asset, output parser, stack discovery, dependency sync, release pin helper, and import
+  source; inspected installed alpha.50 package metadata, public typings, and output-emission code.
 - Compared 0.28.1 with stable 0.29.0 and upstream `main`; no custom-CDK boundary change found.
 - Searched official repository issues, discussions/search results, pull requests, and releases for custom/BYO/generated
   CDK, stack naming, deployed state, external deployment, import/adoption, and output parsing.

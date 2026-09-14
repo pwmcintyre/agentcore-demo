@@ -56,3 +56,16 @@ CloudFormation, preferably through a reviewed code change produced by a develope
 then synthesize and apply that exact source without requiring an interactive setup step or hidden local state. Until
 AgentCore exposes a stable, public IaC interface for every resource type, this is another reason not to endorse
 AgentCore CLI as the infrastructure authoring and deployment boundary.
+
+### CLI and L3 versions are coupled
+
+`@aws/agentcore` does not directly depend on `@aws/agentcore-cdk`, but it scaffolds an exact L3 version into generated
+CDK projects, invokes that project's build and synthesis, and parses L3-specific CloudFormation output names into local
+deployed state. `agentcore deploy` also rewrites managed project dependencies to the versions embedded in the installed
+CLI and runs `npm install`.
+
+The current global CLI is `0.29.0`, which expects L3 `0.1.0-alpha.53`; this project deliberately remains pinned to
+`0.1.0-alpha.50`, paired with CLI `0.28.1`. Running `agentcore deploy` would attempt that alpha dependency upgrade.
+Custom `cdk deploy` avoids automatic repinning, but leaves schema, construct API, stack output, and state-bridge
+compatibility under repository ownership. Deployed AWS resources have no runtime dependency on either npm package. See
+[`tasks/003-agentcore-cli-cdk-boundary.md`](tasks/003-agentcore-cli-cdk-boundary.md) for evidence and failure modes.
