@@ -27,7 +27,23 @@ const spec = AgentCoreProjectSpecSchema.parse({
   onlineEvalConfigs: [],
   configBundles: [],
   policyEngines: [],
-  agentCoreGateways: [],
+  agentCoreGateways: [
+    {
+      name: 'my-gateway',
+      protocolType: 'None',
+      targets: [
+        {
+          name: 'WarrantyCheck',
+          targetType: 'lambdaFunctionArn',
+          lambdaFunctionArn: {
+            lambdaArn: 'arn:aws:lambda:ap-southeast-2:123456789012:function:workshop-warranty-check',
+            toolSchemaFile: 'app/CustomerSupport/tool/warranty_schema.json',
+          },
+        },
+      ],
+      authorizerType: 'NONE',
+    },
+  ],
   knowledgeBases: [],
 });
 
@@ -44,10 +60,13 @@ test('agent runtime imports platform network exports', () => {
       NetworkMode: 'VPC',
       NetworkModeConfig: {
         SecurityGroups: [{ 'Fn::GetAtt': ['RuntimeSecurityGroup', 'GroupId'] }],
-        Subnets: Match.arrayWith(
-          network.privateSubnetIdExports.map(name => ({ 'Fn::ImportValue': name }))
-        ),
+        Subnets: Match.arrayWith(network.privateSubnetIdExports.map(name => ({ 'Fn::ImportValue': name }))),
       },
     },
+    EnvironmentVariables: Match.objectLike({
+      AGENTCORE_GATEWAY_MY_GATEWAY_URL: Match.anyValue(),
+    }),
   });
+  template.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
+  template.resourceCountIs('AWS::BedrockAgentCore::GatewayTarget', 1);
 });

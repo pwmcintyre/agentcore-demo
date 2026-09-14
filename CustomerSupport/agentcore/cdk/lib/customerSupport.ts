@@ -1,4 +1,4 @@
-import { AgentCoreApplication, type AgentCoreProjectSpec } from '@aws/agentcore-cdk';
+import { AgentCoreApplication, AgentCoreMcp, type AgentCoreProjectSpec } from '@aws/agentcore-cdk';
 import { CfnOutput, Fn, Stack, type StackProps } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { Construct } from 'constructs';
@@ -37,6 +37,14 @@ export class CustomerSupportStack extends Stack {
       })),
     };
     const application = new AgentCoreApplication(this, 'Application', { spec: deploymentSpec });
+    if (deploymentSpec.agentCoreGateways.length > 0) {
+      new AgentCoreMcp(this, 'Mcp', {
+        projectName: deploymentSpec.name,
+        mcpSpec: deploymentSpec,
+        agentCoreApplication: application,
+        projectTags: deploymentSpec.tags,
+      });
+    }
     const runtime = application.environments.get('CustomerSupport')?.runtime;
     if (!runtime) throw new Error('CustomerSupport runtime is missing from agentcore.json');
 

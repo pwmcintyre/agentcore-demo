@@ -11,6 +11,8 @@ stack_name="customer-support-agent"
 target_name="default"
 runtime_name="CustomerSupport"
 memory_name="SharedMemory"
+gateway_name="my-gateway"
+gateway_target_name="WarrantyCheck"
 state_file="agentcore/.cli/deployed-state.json"
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
@@ -38,6 +40,10 @@ runtime_id=$(stack_output RuntimeId)
 role_arn=$(stack_output RuntimeRoleArn)
 memory_arn=$(stack_output_prefix "ApplicationMemory${memory_name}ArnOutput")
 memory_id=$(stack_output_prefix "ApplicationMemory${memory_name}IdOutput")
+gateway_arn=$(stack_output GatewayMyGatewayArnOutput)
+gateway_id=$(stack_output GatewayMyGatewayIdOutput)
+gateway_url=$(stack_output GatewayMyGatewayUrlOutput)
+gateway_target_id=$(stack_output GatewayTargetWarrantyCheckIdOutput)
 
 # Custom CDK owns deployment. Register its outputs in local CLI state so
 # AgentCore commands address the same runtime without running agentcore deploy.
@@ -50,6 +56,12 @@ jq_args=(
   --arg memory "$memory_name"
   --arg memoryArn "$memory_arn"
   --arg memoryId "$memory_id"
+  --arg gateway "$gateway_name"
+  --arg gatewayArn "$gateway_arn"
+  --arg gatewayId "$gateway_id"
+  --arg gatewayUrl "$gateway_url"
+  --arg gatewayTarget "$gateway_target_name"
+  --arg gatewayTargetId "$gateway_target_id"
   --arg stackName "$stack_name"
 )
 jq_filter='
@@ -66,6 +78,16 @@ jq_filter='
   .targets[$target].resources.memories[$memory] = {
     memoryId: $memoryId,
     memoryArn: $memoryArn
+  } |
+  .targets[$target].resources.mcp //= {} |
+  .targets[$target].resources.mcp.gateways //= {} |
+  .targets[$target].resources.mcp.gateways[$gateway] = {
+    gatewayId: $gatewayId,
+    gatewayArn: $gatewayArn,
+    gatewayUrl: $gatewayUrl,
+    targets: {
+      ($gatewayTarget): {targetId: $gatewayTargetId}
+    }
   } |
   .targets[$target].resources.stackName = $stackName |
   del(.targets[$target].resources.deployHash)
@@ -91,6 +113,9 @@ jq -e --arg runtime "$runtime_name" \
   'any(.resources[]; .name == $runtime and .detail == "READY")' "$work_dir/status.json" >/dev/null
 jq -e --arg memory "$memory_name" \
   'any(.resources[]; .resourceType == "memory" and .name == $memory and .deploymentState == "deployed")' \
+  "$work_dir/status.json" >/dev/null
+jq -e --arg gateway "$gateway_name" \
+  'any(.resources[]; .resourceType == "gateway" and .name == $gateway and .deploymentState == "deployed")' \
   "$work_dir/status.json" >/dev/null
 
 # CloudWatch ingestion is asynchronous. Correlate by session ID rather than

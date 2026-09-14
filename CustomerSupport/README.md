@@ -66,7 +66,9 @@ AgentCore resources are not declared as separate vanilla CDK constructs in this 
 declarative `agentcore/agentcore.json` spec and passes it to the `@aws/agentcore-cdk` L3 `AgentCoreApplication` construct
 in `cdk/lib/customerSupport.ts`. That L3 construct synthesizes the runtime, memory, roles, and related CloudFormation
 resources. For example, `SharedMemory` is declared in the top-level `memories` array in `agentcore.json`, not by a
-`new Memory(...)` call in the CDK stack.
+`new Memory(...)` call in the CDK stack. Gateways are an exception inside the L3 package: `AgentCoreApplication` does not
+process `agentCoreGateways`, so the custom stack must also instantiate `AgentCoreMcp` with the application reference.
+That second construct creates gateway resources and injects their URLs into runtime environment variables.
 
 Treat this L3 dependency as experimental. This project pins `@aws/agentcore-cdk` to `0.1.0-alpha.50`; all versions
 currently available from npm are alpha releases. The repository URL published in the package metadata returns 404 to
