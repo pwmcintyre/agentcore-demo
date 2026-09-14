@@ -9,7 +9,13 @@
             "roleArn": "arn:aws:iam::503528588406:role/customer-support-agent-ApplicationAgentCustomerSupp-A1N33yu8K8DT"
           }
         },
-        "stackName": "customer-support-agent"
+        "stackName": "customer-support-agent",
+        "memories": {
+          "SharedMemory": {
+            "memoryId": "CustomerSupport_SharedMemory-JSk9WyFI2E",
+            "memoryArn": "arn:aws:bedrock-agentcore:ap-southeast-2:503528588406:memory/CustomerSupport_SharedMemory-JSk9WyFI2E"
+          }
+        }
       }
     }
   }

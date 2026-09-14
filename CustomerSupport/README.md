@@ -48,14 +48,37 @@ and pass only prompt text to the agent.
 Deploy the prerequisite network from repository root, then the application:
 
 ```bash
-cd platform
-npx cdk deploy PlatformNetwork --profile sca-pwmcintyre --require-approval never
+(cd platform && npx cdk deploy PlatformNetwork --profile sca-pwmcintyre --require-approval never)
 
-cd ../CustomerSupport/agentcore/cdk
-npx cdk deploy CustomerSupportAgent -c stage=dev --profile sca-pwmcintyre --require-approval never
+(cd ../CustomerSupport/agentcore/cdk && npx cdk deploy CustomerSupportAgent -c stage=dev --profile sca-pwmcintyre --require-approval never)
 ```
 
 Do not run `agentcore deploy`; it does not own these stacks.
+
+#### CLI and CDK boundary
+
+This split is intentional. Customer-style CDK owns remote infrastructure, including stack names, environments, and
+platform network imports. `agentcore dev` remains independent of deployed infrastructure. Remote operational commands
+such as `agentcore invoke`, `agentcore status`, `agentcore logs`, and `agentcore traces` work after the registration step
+below writes the custom stack outputs to CLI state.
+
+AgentCore resources are not declared as separate vanilla CDK constructs in this repository. `cdk/bin/cdk.ts` reads the
+declarative `agentcore/agentcore.json` spec and passes it to the `@aws/agentcore-cdk` L3 `AgentCoreApplication` construct
+in `cdk/lib/customerSupport.ts`. That L3 construct synthesizes the runtime, memory, roles, and related CloudFormation
+resources. For example, `SharedMemory` is declared in the top-level `memories` array in `agentcore.json`, not by a
+`new Memory(...)` call in the CDK stack.
+
+Treat this L3 dependency as experimental. This project pins `@aws/agentcore-cdk` to `0.1.0-alpha.50`; all versions
+currently available from npm are alpha releases. The repository URL published in the package metadata returns 404 to
+unauthenticated users, so its implementation history and issue tracker are not publicly reviewable. AWS-controlled npm
+maintainers and trusted GitHub Actions publishing establish package provenance, but not API stability or support. Review
+the synthesized CloudFormation diff and run the end-to-end verifier before accepting any package upgrade.
+
+`agentcore deploy` is not compatible with the current stack. The CLI requires the synthesized stack name
+`AgentCore-CustomerSupport-default`, but this project deliberately deploys `customer-support-agent`. Renaming an existing
+CloudFormation stack requires a migration, not a configuration-only change. See
+[`tasks/003-agentcore-cli-cdk-boundary.md`](../tasks/003-agentcore-cli-cdk-boundary.md) for supported features and the
+onboarding contract.
 
 ### Runtime registration and verification
 
@@ -69,8 +92,18 @@ Run the bridge and complete end-to-end check from `CustomerSupport/` after each 
 ./scripts/verify-deployment.sh
 ```
 
-The script registers CDK runtime outputs, invokes a synthetic marker, checks runtime readiness, then correlates matching
-CloudWatch logs and traces by session ID. It prints one `PASS` line and avoids printing conversation content.
+The script has two responsibilities:
+
+- **CLI state bridge:** It reads runtime and memory IDs and ARNs from CloudFormation outputs, then writes the shape that
+  AgentCore operational commands expect in `agentcore/.cli/deployed-state.json`. Without this step, resources deployed
+  by custom CDK appear `local-only` or cannot be addressed by the CLI.
+- **Deployment smoke test:** It invokes the runtime with a synthetic marker and user identity, checks that the runtime is
+  `READY` and memory is `deployed`, then correlates CloudWatch logs and traces by session ID.
+
+It prints one `PASS` line and avoids printing conversation content. Its stack name, resource names, and output prefixes
+are project-specific compatibility code. Update it when adding another AgentCore resource type. The bridge can be
+removed if deployment moves to a supported workflow that populates CLI state itself, such as a compatible
+`agentcore deploy` lifecycle.
 
 ## Commands
 
@@ -80,7 +113,7 @@ CloudWatch logs and traces by session ID. It prints one `PASS` line and avoids p
 | `agentcore add` | Add resources (agent, memory, credential, gateway, evaluator, policy) |
 | `agentcore remove` | Remove resources |
 | `agentcore dev` | Run agent locally with hot-reload |
-| `agentcore deploy` | Unused here; custom CDK owns deployment |
+| `agentcore deploy` | Unsupported here; custom CDK owns deployment |
 | `agentcore status` | Show deployment status |
 | `agentcore invoke` | Invoke agent (local or deployed) |
 | `agentcore logs` | View agent logs |
@@ -127,5 +160,5 @@ The project uses a **flat resource model** — agents, memories, credentials, ga
 ## Documentation
 
 - [AgentCore CLI](https://github.com/aws/agentcore-cli)
-- [AgentCore CDK Constructs](https://github.com/aws/agentcore-l3-cdk-constructs)
+- [`@aws/agentcore-cdk` on npm](https://www.npmjs.com/package/@aws/agentcore-cdk)
 - [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/)

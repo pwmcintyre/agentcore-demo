@@ -10,6 +10,7 @@ export AWS_REGION="${AWS_REGION:-ap-southeast-2}"
 stack_name="customer-support-agent"
 target_name="default"
 runtime_name="CustomerSupport"
+memory_name="SharedMemory"
 state_file="agentcore/.cli/deployed-state.json"
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
@@ -25,9 +26,18 @@ stack_output() {
     --output text
 }
 
+stack_output_prefix() {
+  aws cloudformation describe-stacks \
+    --stack-name "$stack_name" \
+    --query "Stacks[0].Outputs[?starts_with(OutputKey, '$1')].OutputValue | [0]" \
+    --output text
+}
+
 runtime_arn=$(stack_output RuntimeArn)
 runtime_id=$(stack_output RuntimeId)
 role_arn=$(stack_output RuntimeRoleArn)
+memory_arn=$(stack_output_prefix "ApplicationMemory${memory_name}ArnOutput")
+memory_id=$(stack_output_prefix "ApplicationMemory${memory_name}IdOutput")
 
 # Custom CDK owns deployment. Register its outputs in local CLI state so
 # AgentCore commands address the same runtime without running agentcore deploy.
@@ -37,6 +47,9 @@ jq_args=(
   --arg runtimeArn "$runtime_arn"
   --arg runtimeId "$runtime_id"
   --arg roleArn "$role_arn"
+  --arg memory "$memory_name"
+  --arg memoryArn "$memory_arn"
+  --arg memoryId "$memory_id"
   --arg stackName "$stack_name"
 )
 jq_filter='
@@ -48,6 +61,11 @@ jq_filter='
     runtimeId: $runtimeId,
     runtimeArn: $runtimeArn,
     roleArn: $roleArn
+  } |
+  .targets[$target].resources.memories //= {} |
+  .targets[$target].resources.memories[$memory] = {
+    memoryId: $memoryId,
+    memoryArn: $memoryArn
   } |
   .targets[$target].resources.stackName = $stackName |
   del(.targets[$target].resources.deployHash)
@@ -61,7 +79,8 @@ fi
 mv "$work_dir/state.json" "$state_file"
 
 marker="E2E-$(date -u +%Y%m%dT%H%M%SZ)-$$"
-agentcore invoke --runtime "$runtime_name" --json \
+agentcore invoke --runtime "$runtime_name" \
+  -H "X-Amzn-Bedrock-AgentCore-Runtime-Custom-User-Id: e2e-verifier" --json \
   "Hello. Include this exact validation marker in your reply: $marker" >"$work_dir/invoke.json"
 jq -e --arg marker "$marker" '.success == true and (.response | contains($marker))' \
   "$work_dir/invoke.json" >/dev/null
@@ -70,6 +89,9 @@ session_id=$(jq -r '.sessionId' "$work_dir/invoke.json")
 agentcore status --runtime "$runtime_name" --json >"$work_dir/status.json"
 jq -e --arg runtime "$runtime_name" \
   'any(.resources[]; .name == $runtime and .detail == "READY")' "$work_dir/status.json" >/dev/null
+jq -e --arg memory "$memory_name" \
+  'any(.resources[]; .resourceType == "memory" and .name == $memory and .deploymentState == "deployed")' \
+  "$work_dir/status.json" >/dev/null
 
 # CloudWatch ingestion is asynchronous. Correlate by session ID rather than
 # requiring prompt content to be captured in logs or traces.

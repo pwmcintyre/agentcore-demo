@@ -54,6 +54,7 @@ In a new terminal, you can invoke that server with:
 
 # Deployment
 
-After providing credentials, `agentcore deploy` will deploy your project into Amazon Bedrock AgentCore.
+This project uses custom CDK instead of `agentcore deploy`. Follow the deployment and runtime registration procedure in
+the repository's `CustomerSupport/README.md`.
 
 Use `agentcore invoke` to invoke your deployed agent.

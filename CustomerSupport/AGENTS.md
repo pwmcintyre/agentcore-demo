@@ -14,15 +14,15 @@ Tags defined in `agentcore.json` flow through to deployed CloudFormation resourc
 
 ## Critical Invariants
 
-1. **Schema-First Authority:** The `.json` files are the source of truth. Do not modify agent behavior by editing
-   generated CDK code in `cdk/`.
+1. **Split Authority:** The `.json` files own AgentCore resource configuration. Custom CDK owns stack identity,
+   environments, and platform integration.
 2. **Resource Identity:** The `name` field determines the CloudFormation Logical ID.
    - **Renaming** a resource will **destroy and recreate** it.
    - **Modifying** other fields will update the resource **in-place**.
 3. **Schema Validation:** If your JSON conforms to the types in `.llm-context/`, it will deploy successfully. Run
    `agentcore validate` to check.
-4. **Resource Removal:** Use `agentcore remove` to remove resources. Run `agentcore deploy` after removal to tear down
-   deployed infrastructure.
+4. **Resource Removal:** Use `agentcore remove` to update configuration, then run the custom CDK deployment. Do not use
+   `agentcore deploy`.
 5. **Invocation Input:** Validate runtime payloads and require text prompts to be strings. If a Strands app accepts a
    caller-supplied message history, normalize the history tail with `strip_trailing_tool_use()` before invocation.
 6. **End-to-End Proof:** After deploying code or infrastructure that can affect runtime behavior, invoke the deployed
@@ -154,7 +154,7 @@ When modifying JSON config files:
 
 **After every export, you MUST read `app/<agentName>/EXPORT_NOTES.md` before proceeding.**
 
-This file lists any manual follow-up items required before the agent will deploy or run correctly — missing files to create, IAM policies to add, or configuration steps the exporter could not automate. A clean export produces "No manual steps required." Complete every item in the file before running `agentcore deploy`.
+This file lists any manual follow-up items required before the agent will deploy or run correctly — missing files to create, IAM policies to add, or configuration steps the exporter could not automate. A clean export produces "No manual steps required." Complete every item before running the custom CDK deployment.
 
 ```bash
 agentcore export harness --name <harnessName>   # generates app/<agentName>/EXPORT_NOTES.md
@@ -171,7 +171,7 @@ Run `agentcore --help` or `agentcore <command> --help` for full flags. Commonly 
 | --- | --- |
 | `agentcore create` | Create a new project |
 | `agentcore dev` | Run agent locally with hot-reload |
-| `agentcore deploy` | Deploy to AWS |
+| `agentcore deploy` | Unsupported here; assumes CLI-owned stack naming and lifecycle |
 | `agentcore invoke` | Invoke agent (local or deployed) |
 | `agentcore status` | Show deployment status |
 | `agentcore validate` | Validate configuration |
