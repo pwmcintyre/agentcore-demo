@@ -8,9 +8,6 @@ import jwt
 app = BedrockAgentCoreApp()
 log = app.logger
 
-# MCP clients: Exa AI (web search) + AgentCore Gateway (Lambda tools)
-mcp_clients = [get_streamable_http_mcp_client(), get_gateway_mcp_client()]
-
 SYSTEM_PROMPT="""You are a helpful and professional customer support assistant for an e-commerce company.
 Your role is to:
 - Provide accurate information using the tools available to you
@@ -76,60 +73,42 @@ def get_product_info(query: str) -> str:
         return "Found products:\n" + "\n".join(results)
     return f"No products found matching '{query}'."
 
-tools = [get_return_policy, get_product_info]
-
-# Add MCP client (Exa AI web search) to tools
-for mcp_client in mcp_clients:
-    if mcp_client:
-        tools.append(mcp_client)
-
 # --- Agent Setup ---
 
-_agent = None
+def create_agent(session_id: str, user_id: str, auth_header: str) -> Agent:
+    mcp_clients = [get_streamable_http_mcp_client(), get_gateway_mcp_client(auth_header)]
+    tools = [get_return_policy, get_product_info, *filter(None, mcp_clients)]
+    return Agent(
+        model=load_model(),
+        session_manager=get_memory_session_manager(session_id, user_id),
+        system_prompt=SYSTEM_PROMPT,
+        tools=tools,
+    )
 
-def get_or_create_agent(session_id, user_id):
-    global _agent
-    if _agent is None:
-        _agent = Agent(
-            model=load_model(),
-            session_manager=get_memory_session_manager(session_id, user_id),
-            system_prompt=SYSTEM_PROMPT,
-            tools=tools
-        )
-    return _agent
 
-def extract_user_id(context) -> str | None:
-    """Extract user_id from JWT bearer token (username claim) or fall back to custom header."""
-    headers = context.request_headers or {}
-
-    # Try Authorization header first (Bearer JWT)
-    auth_header = headers.get("Authorization") or headers.get("authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        try:
-            token = auth_header.split(" ", 1)[1]
-            claims = jwt.decode(token, options={"verify_signature": False})
-            username = claims.get("username")
-            if username:
-                return username
-        except Exception as e:
-            log.warning(f"Failed to decode JWT for user_id: {e}")
-    else:
-        log.info(f"No Bearer token found. Auth header present: {auth_header is not None}")
-
-    # Fall back to custom header
-    return headers.get("x-amzn-bedrock-agentcore-runtime-custom-user-id")
+def extract_user_id(auth_header: str) -> str:
+    """Read identity already verified by the Runtime CUSTOM_JWT authorizer."""
+    if not auth_header.startswith("Bearer "):
+        raise ValueError("Authorization header must contain a Bearer token")
+    claims = jwt.decode(auth_header.removeprefix("Bearer "), options={"verify_signature": False})
+    user_id = claims.get("username") or claims.get("sub") or claims.get("client_id")
+    if not user_id:
+        raise ValueError("Bearer token has no usable identity claim")
+    return user_id
 
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
     session_id = context.session_id
-    user_id = extract_user_id(context)
+    headers = context.request_headers or {}
+    auth_header = headers.get("Authorization") or headers.get("authorization") or ""
+    user_id = extract_user_id(auth_header)
 
     if not session_id or not user_id:
-        raise ValueError("session_id and user_id are required. Pass --session-id and --user-id when invoking.")
+        raise ValueError("session_id and authenticated user_id are required")
 
-    agent = get_or_create_agent(session_id, user_id)
+    agent = create_agent(session_id, user_id, auth_header)
     stream = agent.stream_async(payload.get("prompt"))
     async for event in stream:
         if "data" in event and isinstance(event["data"], str):

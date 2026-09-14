@@ -19,6 +19,13 @@ const spec = AgentCoreProjectSpecSchema.parse({
       entrypoint: 'main.py',
       codeLocation: 'app/CustomerSupport/',
       runtimeVersion: 'PYTHON_3_14',
+      authorizerType: 'CUSTOM_JWT',
+      authorizerConfiguration: {
+        customJwtAuthorizer: {
+          discoveryUrl: 'https://cognito-idp.ap-southeast-2.amazonaws.com/test/.well-known/openid-configuration',
+          allowedClients: ['machine-client', 'web-client'],
+        },
+      },
     },
   ],
   memories: [],
@@ -29,7 +36,7 @@ const spec = AgentCoreProjectSpecSchema.parse({
   policyEngines: [],
   agentCoreGateways: [
     {
-      name: 'my-gateway',
+      name: 'my-gateway-secure',
       protocolType: 'None',
       targets: [
         {
@@ -41,7 +48,13 @@ const spec = AgentCoreProjectSpecSchema.parse({
           },
         },
       ],
-      authorizerType: 'NONE',
+      authorizerType: 'CUSTOM_JWT',
+      authorizerConfiguration: {
+        customJwtAuthorizer: {
+          discoveryUrl: 'https://cognito-idp.ap-southeast-2.amazonaws.com/test/.well-known/openid-configuration',
+          allowedClients: ['machine-client', 'web-client'],
+        },
+      },
     },
   ],
   knowledgeBases: [],
@@ -64,8 +77,23 @@ test('agent runtime imports platform network exports', () => {
       },
     },
     EnvironmentVariables: Match.objectLike({
-      AGENTCORE_GATEWAY_MY_GATEWAY_URL: Match.anyValue(),
+      AGENTCORE_GATEWAY_MY_GATEWAY_SECURE_URL: Match.anyValue(),
     }),
+    AuthorizerConfiguration: {
+      CustomJWTAuthorizer: {
+        DiscoveryUrl: 'https://cognito-idp.ap-southeast-2.amazonaws.com/test/.well-known/openid-configuration',
+        AllowedClients: ['machine-client', 'web-client'],
+      },
+    },
+  });
+  template.hasResourceProperties('AWS::BedrockAgentCore::Gateway', {
+    AuthorizerType: 'CUSTOM_JWT',
+    AuthorizerConfiguration: {
+      CustomJWTAuthorizer: {
+        DiscoveryUrl: 'https://cognito-idp.ap-southeast-2.amazonaws.com/test/.well-known/openid-configuration',
+        AllowedClients: ['machine-client', 'web-client'],
+      },
+    },
   });
   template.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
   template.resourceCountIs('AWS::BedrockAgentCore::GatewayTarget', 1);

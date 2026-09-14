@@ -28,6 +28,9 @@ Tags defined in `agentcore.json` flow through to deployed CloudFormation resourc
 6. **End-to-End Proof:** After deploying code or infrastructure that can affect runtime behavior, invoke the deployed
    agent and verify runtime status, response, logs, and traces with `scripts/verify-deployment.sh`. A successful
    CloudFormation deployment alone is not completion; record any unavailable observable as a blocker.
+7. **Request-Scoped Authentication:** Runtime and Gateway independently validate the same Cognito bearer token. Forward
+   it to Gateway only for the current request, and derive memory identity from its already-validated claims. Do not cache
+   an agent, memory session manager, MCP client, or bearer token across requests.
 
 ## Directory Structure
 

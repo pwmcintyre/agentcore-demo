@@ -82,6 +82,16 @@ CloudFormation stack requires a migration, not a configuration-only change. See
 [`tasks/003-agentcore-cli-cdk-boundary.md`](../tasks/003-agentcore-cli-cdk-boundary.md) for supported features and the
 onboarding contract.
 
+### Cognito authentication
+
+Cognito custom JWT authorizers protect both the AgentCore Runtime and `my-gateway-secure`. Clients send one access token
+to the Runtime; application code reads the already-validated identity claim for memory namespacing and forwards the same
+`Authorization` header to Gateway. Gateway validates it independently before exposing the warranty Lambda tool.
+
+Agent and MCP clients are created per request. Do not cache them globally: doing so would retain the first session's
+memory manager and bearer token across users and after token expiry. The unauthenticated `my-gateway` was replaced and
+removed from CloudFormation rather than retained as a fallback.
+
 ### Runtime registration and verification
 
 AgentCore CLI commands resolve deployed resources through `agentcore/.cli/deployed-state.json`. Custom CDK cannot
@@ -96,11 +106,13 @@ Run the bridge and complete end-to-end check from `CustomerSupport/` after each 
 
 The script has two responsibilities:
 
-- **CLI state bridge:** It reads runtime and memory IDs and ARNs from CloudFormation outputs, then writes the shape that
-  AgentCore operational commands expect in `agentcore/.cli/deployed-state.json`. Without this step, resources deployed
-  by custom CDK appear `local-only` or cannot be addressed by the CLI.
-- **Deployment smoke test:** It invokes the runtime with a synthetic marker and user identity, checks that the runtime is
-  `READY` and memory is `deployed`, then correlates CloudWatch logs and traces by session ID.
+- **CLI state bridge:** It reads runtime, memory, Gateway, and target IDs, ARNs, and URLs from CloudFormation outputs,
+  then writes the shape that AgentCore operational commands expect in `agentcore/.cli/deployed-state.json`. Without this
+  step, resources deployed by custom CDK appear `local-only` or cannot be addressed by the CLI.
+- **Deployment smoke test:** It obtains a short-lived Cognito machine token without printing it, proves Runtime and
+  Gateway reject unauthenticated requests, invokes the runtime with a synthetic marker, exercises the secured warranty
+  tool, checks resource state, then correlates CloudWatch logs and traces by session ID. Set
+  `AGENTCORE_BEARER_TOKEN` to use a caller-supplied token instead.
 
 It prints one `PASS` line and avoids printing conversation content. Its stack name, resource names, and output prefixes
 are project-specific compatibility code. Update it when adding another AgentCore resource type. The bridge can be

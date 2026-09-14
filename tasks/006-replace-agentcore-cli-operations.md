@@ -22,6 +22,9 @@ shows that these useful commands remain coupled to CLI deployment conventions we
   during this investigation.
 - Include authentication, streaming responses, session and user headers, CloudWatch pagination, trace correlation,
   local hot reload, cross-platform behavior, testing, and CLI version drift in the estimate.
+- Evaluate bearer-token handling explicitly. `agentcore invoke --bearer-token` places a short-lived credential in process
+  arguments; determine whether a repository-owned invocation path can accept it through stdin or another less exposed
+  channel without losing streaming support.
 
 ## Acceptance criteria
 
