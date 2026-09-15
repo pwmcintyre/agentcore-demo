@@ -31,7 +31,15 @@ const spec = AgentCoreProjectSpecSchema.parse({
   memories: [],
   credentials: [],
   evaluators: [],
-  onlineEvalConfigs: [],
+  onlineEvalConfigs: [
+    {
+      name: 'QualityMonitor',
+      agent: 'CustomerSupport',
+      evaluators: ['Builtin.GoalSuccessRate', 'Builtin.Correctness', 'Builtin.ToolSelectionAccuracy'],
+      samplingRate: 100,
+      enableOnCreate: true,
+    },
+  ],
   configBundles: [],
   policyEngines: [],
   agentCoreGateways: [
@@ -97,4 +105,34 @@ test('agent runtime imports platform network exports', () => {
   });
   template.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
   template.resourceCountIs('AWS::BedrockAgentCore::GatewayTarget', 1);
+  template.hasResourceProperties('AWS::BedrockAgentCore::OnlineEvaluationConfig', {
+    OnlineEvaluationConfigName: 'CustomerSupport_QualityMonitor',
+    Evaluators: [
+      { EvaluatorId: 'Builtin.GoalSuccessRate' },
+      { EvaluatorId: 'Builtin.Correctness' },
+      { EvaluatorId: 'Builtin.ToolSelectionAccuracy' },
+    ],
+    ExecutionStatus: 'ENABLED',
+    DataSourceConfig: {
+      CloudWatchLogs: {
+        LogGroupNames: [
+          {
+            'Fn::Join': [
+              '',
+              [
+                '/aws/bedrock-agentcore/runtimes/',
+                { 'Fn::GetAtt': ['ApplicationAgentCustomerSupportRuntimeCF96A437', 'AgentRuntimeId'] },
+                '-DEFAULT',
+              ],
+            ],
+          },
+        ],
+        ServiceNames: ['CustomerSupport_CustomerSupport.DEFAULT'],
+      },
+    },
+    Rule: {
+      SamplingConfig: { SamplingPercentage: 100 },
+      SessionConfig: { SessionTimeoutMinutes: 5 },
+    },
+  });
 });

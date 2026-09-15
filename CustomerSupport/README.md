@@ -70,6 +70,18 @@ resources. For example, `SharedMemory` is declared in the top-level `memories` a
 process `agentCoreGateways`, so the custom stack must also instantiate `AgentCoreMcp` with the application reference.
 That second construct creates gateway resources and injects their URLs into runtime environment variables.
 
+#### Learnings
+
+`agentcore/agentcore.json` is the shared project spec for both the AgentCore CLI and custom CDK. CLI authoring commands
+mutate it, `agentcore validate` parses it, and local or deployed CLI operations use it; deployed operations also use
+`agentcore/.cli/deployed-state.json` to resolve resources.
+
+Custom CDK loads the same JSON, overlays VPC deployment values in `agentcore/cdk/lib/customerSupport.ts`, and passes the
+result to `AgentCoreApplication`. That L3 construct deploys runtimes, memories, evaluators, and online evaluations. Lab
+5's `onlineEvalConfigs` is therefore consumed automatically; no parallel hand-written L1 is needed. `AgentCoreMcp` is
+instantiated separately because `AgentCoreApplication` does not provision gateways in this setup. Do not use
+`agentcore deploy`; custom CDK owns the stack lifecycle.
+
 Treat this L3 dependency as experimental. This project pins `@aws/agentcore-cdk` to `0.1.0-alpha.50`; all versions
 currently available from npm are alpha releases. The repository URL published in the package metadata returns 404 to
 unauthenticated users, so its implementation history and issue tracker are not publicly reviewable. AWS-controlled npm
