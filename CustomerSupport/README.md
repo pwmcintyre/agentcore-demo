@@ -92,6 +92,22 @@ Agent and MCP clients are created per request. Do not cache them globally: doing
 memory manager and bearer token across users and after token expiry. The unauthenticated `my-gateway` was replaced and
 removed from CloudFormation rather than retained as a fallback.
 
+#### Intentional workshop deviation
+
+This differs deliberately from the Lab 4 Step 5 sample, which caches one global `_agent`. On a warm runtime that sample
+also retains the first request's memory session manager, bearer token, and MCP tool inventory. Later users can receive
+the wrong session context, and a refreshed token is ignored after the original token expires.
+
+Keep `create_agent(session_id, user_id, auth_header)` request-scoped when applying later workshop changes. Do not paste a
+later full-file `main.py` sample over it or reintroduce `_agent`/`get_or_create_agent`. Labs 5-9 do not depend on those
+symbols: preserve decorated tool names and docstrings, add Gateway targets declaratively, and apply prompt changes only
+to `SYSTEM_PROMPT`. Request-scoped construction repeats MCP discovery and adds latency, but preserves user, session,
+token, and tool isolation.
+
+`extract_user_id` decodes claims without verifying the signature because AgentCore Runtime's `CUSTOM_JWT` authorizer has
+already validated the token. That assumption does not hold for direct local invocation; add local JWT verification if
+local requests become a trusted or shared interface.
+
 ### Runtime registration and verification
 
 AgentCore CLI commands resolve deployed resources through `agentcore/.cli/deployed-state.json`. Custom CDK cannot

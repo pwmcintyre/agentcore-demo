@@ -32,6 +32,19 @@ Tags defined in `agentcore.json` flow through to deployed CloudFormation resourc
    it to Gateway only for the current request, and derive memory identity from its already-validated claims. Do not cache
    an agent, memory session manager, MCP client, or bearer token across requests.
 
+## Workshop Deviations
+
+Lab 4 Step 5 caches a global `_agent`. This repository intentionally uses
+`create_agent(session_id, user_id, auth_header)` per request because the cached Agent retains the first memory session,
+Gateway token, and MCP tool inventory across warm invocations. Never restore `_agent` or `get_or_create_agent` when
+applying workshop snippets.
+
+Labs 5-9 are semantically compatible with this design and do not require those symbol names. Apply later instructions as
+targeted changes: retain request-scoped Agent/MCP construction, preserve decorated tool names and docstrings, add Gateway
+targets through `agentcore.json` plus custom CDK, and change only `SYSTEM_PROMPT` when applying prompt recommendations.
+Unsigned JWT decoding in `extract_user_id` is permitted only behind Runtime `CUSTOM_JWT` validation; do not reuse that
+function at an untrusted local or direct HTTP boundary.
+
 ## Directory Structure
 
 ```
